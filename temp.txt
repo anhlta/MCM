@@ -1,0 +1,58 @@
+AdReportRepo.prototype.getVisitorSummary2 = function(campaign_id, start, end, completed){
+	var deferred = Q.defer();
+	var query = "SELECT * FROM aduniquevisitorlog WHERE campaign_id = " + campaign_id;
+
+	if (start && end){
+		query += " and event_time >= '" + start.toISOString() 
+								+ "' and event_time <= '" + end.toISOString() + "'";
+	}
+	
+	var result = {
+		unique_visitor: 0,
+		new_visitor: 0,
+		return_visitor: 0,
+	};
+	var data = [];
+
+	this.client.eachRow(query, [], 
+		function(n, row){
+			data.push(row);
+		},
+		function (err, rows){
+			if(err){
+				errHandler.handleDbErr(err);
+			}else{
+				//console.log('data.length', data.length);
+				if(data.length){
+					data.sort(function(a, b){
+						return new Date(a.event_time) - new Date(b.event_time);
+					});
+					//var first_date = moment(new Date(data[0].event_time));
+					var first_date = moment(start);
+					//console.log('first_date', first_date);
+					//console.log('end_date', end);
+					var last_date = moment(new Date(data[data.length - 1]));
+					for(var i = 0; i < data.length; i++){
+						result.new_visitor += (data[i].new_num || 0) - 0;
+						for(var j = 1; j <= config.tracking.max_num_day_history; j++){
+							result.return_visitor += (data[i]['day' + j] || 0) - 0;
+						}
+						//console.log('i date', moment(new Date(data[i].event_time)));
+						var duration = moment.duration(moment(new Date(data[i].event_time)).diff(first_date));
+						var day_diff = Math.floor(duration.asDays());
+						//console.log('day_diff', day_diff);
+						result.unique_visitor += (data[i].new_num || 0) - 0;
+						for(var m = day_diff + 1; m <= config.tracking.max_num_day_history; m++){
+							result.unique_visitor += (data[i]['day' + m] || 0) - 0;
+						}
+					}
+				}
+				if(completed){
+					completed(result);
+				}else{
+					deferred.resolve({result: result});
+				}
+			}
+		});
+	return deferred.promise;
+};
